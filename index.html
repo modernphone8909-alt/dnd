@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+
+<html lang="th">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>D&D Hell V9: Overlord Edition</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+
+        @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Sarabun:wght@300;400;700&display=swap');
+
+        body { font-family: 'Sarabun', sans-serif; background-color: #080808; color: #e0e0e0; }
+
+        .fantasy-font { font-family: 'MedievalSharp', cursive; }
+
+        
+
+        /* Map System */
+
+        .map-wrapper { width: 100%; height: 70vh; overflow: auto; border: 4px solid #222; background: #000; border-radius: 15px; box-shadow: inset 0 0 50px #000; }
+
+        #battle-map { width: 1500px; height: 1500px; background-size: 100% 100%; position: relative; }
+
+        
+
+        /* Token & FX */
+
+        .token { width: 90px; position: absolute; cursor: grab; text-align: center; transition: transform 0.1s; z-index: 10; }
+
+        .token img { width: 70px; height: 70px; border-radius: 50%; border: 3px solid; object-fit: cover; margin: 0 auto; background: #000; transition: filter 0.3s, border-color 0.3s; }
+
+        
+
+        /* Damage Effects */
+
+        .dmg-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+
+        .dmg-flash img { filter: brightness(3) saturate(5) sepia(1) hue-rotate(-50deg) !important; border-color: #ff0000 !important; }
+
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+
+
+
+        /* Health Bars */
+
+        .hp-container { width: 75px; height: 10px; background: #111; border: 1px solid #333; border-radius: 5px; margin: 4px auto; position: relative; overflow: hidden; }
+
+        .hp-bar-fill { height: 100%; background: linear-gradient(90deg, #ff4d4d, #990000); transition: width 0.6s cubic-bezier(0.17, 0.67, 0.83, 0.67); }
+
+        .hp-text-overlay { position: absolute; width: 100%; text-align: center; font-size: 7px; font-weight: 900; color: white; top: -1px; text-shadow: 1px 1px 2px black; }
+
+
+
+        .boss-token img { border-color: #ff0000; box-shadow: 0 0 15px rgba(255,0,0,0.4); }
+
+        .token-name { font-size: 10px; font-weight: bold; background: rgba(0,0,0,0.85); border-radius: 4px; padding: 2px 5px; color: white; display: inline-block; margin-top: 2px; }
+
+
+
+        .glass-card { background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(10px); border: 1px solid #333; border-radius: 12px; }
+
+        input, select { background: #000 !important; color: #fff; border: 1px solid #444; padding: 6px; border-radius: 6px; }
+
+    </style>
+
+</head>
+
+<body class="p-4">
+
+
+
+    <audio id="bgm-player" loop></audio>
+
+
+
+    <div id="victory-overlay" class="hidden fixed inset-0 bg-black/95 z-[9999] flex flex-col items-center justify-center">
+
+        <h1 class="text-9xl fantasy-font text-yellow-500 mb-6 animate-pulse">VICTORY</h1>
+
+        <button onclick="closeVictory()" class="bg-yellow-600 text-black px-12 py-4 rounded-full font-black text-2xl hover:bg-yellow-400 transition-all">CONTINUE JOURNEY</button>
+
+    </div>
+
+
+
+    <div id="app" class="max-w-[1800px] mx-auto">
+
+        <div id="role-selection" class="text-center py-40 bg-black/60 rounded-3xl border border-white/10 shadow-2xl">
+
+            <h1 class="text-8xl fantasy-font text-red-600 mb-10 drop-shadow-2xl">NORTHWYRD V9</h1>
+
+            <div class="flex justify-center gap-10">
+
+                <button onclick="checkDMAuth()" class="bg-yellow-600 hover:bg-yellow-500 text-black font-black py-6 px-16 rounded-2xl text-3xl shadow-lg transition-transform hover:scale-105">DM COMMAND</button>
+
+                <button onclick="showLogin()" class="bg-blue-700 hover:bg-blue-600 text-white font-black py-6 px-16 rounded-2xl text-3xl shadow-lg transition-transform hover:scale-105">PLAYER ENTER</button>
+
+            </div>
+
+        </div>
+
+
+
+        <div id="main-ui" class="hidden grid grid-cols-12 gap-6">
+
+            <div class="col-span-12 xl:col-span-3 space-y-4">
+
+                <div id="dm-tools" class="hidden glass-card p-5 border-2 border-yellow-600/30">
+
+                    <h3 class="text-yellow-500 font-black mb-4 text-center border-b border-yellow-900/50 pb-2 uppercase tracking-widest">Master Controls</h3>
+
+                    
+
+                    <div class="space-y-2 mb-4">
+
+                        <label class="text-[10px] text-yellow-600 font-bold uppercase">Background Music (Loop)</label>
+
+                        <input type="text" id="bgm-input" placeholder="URL (.mp3, .ogg, .wav)" class="w-full text-xs">
+
+                        <div class="flex gap-1">
+
+                            <button onclick="updateBGM()" class="flex-1 bg-yellow-700 text-black text-[10px] font-bold py-1 rounded hover:bg-yellow-500">PLAY SYNC</button>
+
+                            <button onclick="document.getElementById('bgm-player').pause()" class="bg-red-900 px-3 rounded text-[10px]">STOP</button>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div class="space-y-2 mb-4 border-t border-gray-800 pt-3">
+
+                        <input type="text" id="map-input" placeholder="World Map URL" class="w-full text-xs">
+
+                        <button onclick="updateVisuals()" class="w-full bg-yellow-600 text-black font-bold py-1 rounded text-[10px]">CHANGE WORLD</button>
+
+                    </div>
+
+
+
+                    <div class="space-y-1 mb-4 border-t border-gray-800 pt-3">
+
+                        <input type="text" id="n-name" placeholder="Boss Name" class="w-full text-xs">
+
+                        <input type="text" id="n-img" placeholder="Boss Image URL" class="w-full text-xs">
+
+                        <div class="flex gap-1">
+
+                            <input type="number" id="n-hp" placeholder="Max HP" class="w-1/2 text-xs">
+
+                            <input type="number" id="n-atk" placeholder="ATK" class="w-1/2 text-xs">
+
+                        </div>
+
+                        <button onclick="addMonster()" class="w-full bg-red-700 hover:bg-red-600 py-2 rounded font-black text-xs mt-1 shadow-lg">SUMMON BOSS</button>
+
+                    </div>
+
+
+
+                    <button onclick="triggerVictory()" class="w-full bg-gradient-to-b from-yellow-400 to-yellow-600 text-black py-2 rounded font-black text-sm mb-4">DECLARE VICTORY</button>
+
+                    
+
+                    <h4 class="text-[10px] font-bold text-blue-400 mb-2 uppercase border-b border-blue-900 pb-1">Skill Approval</h4>
+
+                    <div id="pending-skills" class="max-h-40 overflow-y-auto space-y-2"></div>
+
+                </div>
+
+
+
+                <div id="game-log" class="glass-card p-4 h-48 overflow-y-auto text-[11px] font-mono text-green-400 bg-black/80 border-t-2 border-green-900 shadow-inner">
+
+                    <div>[SYSTEM]: World Ready...</div>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="col-span-12 xl:col-span-6">
+
+                <div class="map-wrapper"><div id="battle-map"></div></div>
+
+            </div>
+
+
+
+            <div class="col-span-12 xl:col-span-3 space-y-4">
+
+                <div id="auth-box" class="hidden glass-card p-8 border-t-4 border-blue-600">
+
+                    <h2 class="text-2xl font-black mb-4 text-center tracking-tighter">CHARACTER SETUP</h2>
+
+                    <input type="text" id="p-name" placeholder="Name" class="mb-2 w-full">
+
+                    <input type="text" id="p-img" placeholder="Avatar Image URL" class="mb-2 w-full">
+
+                    <select id="p-race" class="mb-4 w-full bg-black border border-gray-700 p-2 rounded text-sm">
+
+                        <option value="Human">Human (+2 Roll)</option>
+
+                        <option value="Elf">Elf (1.5x Dmg)</option>
+
+                        <option value="Dwarf">Dwarf (80% Dodge)</option>
+
+                        <option value="Giant">Giant (300 HP)</option>
+
+                        <option value="Dragon">Dragon (50% Kill)</option>
+
+                        <option value="Demon">Demon (Half Dmg)</option>
+
+                        <option value="Angel">Angel (Heal All)</option>
+
+                        <option value="Drow">Drow (3 Rolls)</option>
+
+                    </select>
+
+                    <button onclick="handleAuth()" class="w-full bg-blue-600 py-4 rounded-xl font-black text-xl hover:bg-blue-500 shadow-xl transition-all">ENTER WORLD</button>
+
+                </div>
+
+
+
+                <div id="game-controls" class="hidden glass-card p-5">
+
+                    <div class="flex justify-between items-center mb-2">
+
+                        <span class="text-[10px] font-black text-yellow-500 uppercase">New Skill (Max 3)</span>
+
+                        <span id="skill-count" class="text-[10px] text-gray-500 font-black">0/3</span>
+
+                    </div>
+
+                    <div class="flex gap-1 mb-6">
+
+                        <input type="text" id="new-skill-name" placeholder="Request name..." class="flex-1 h-8 text-xs">
+
+                        <button id="btn-request-skill" onclick="requestSkill()" class="bg-blue-600 px-3 rounded font-black text-[10px]">LEARN</button>
+
+                    </div>
+
+
+
+                    <div id="my-skills" class="space-y-2 mb-6"></div>
+
+                    
+
+                    <div class="text-center bg-black p-4 rounded-2xl border border-white/10 shadow-lg">
+
+                        <div class="text-5xl font-black fantasy-font flex justify-center gap-4 mb-2">
+
+                            <span id="d1" class="text-white drop-shadow-md">?</span>
+
+                            <span class="text-red-600">-</span>
+
+                            <span id="d2" class="text-white drop-shadow-md">?</span>
+
+                        </div>
+
+                        <div class="text-xl font-black text-yellow-500 mb-4 tracking-widest uppercase">TOTAL: <span id="total-score">0</span></div>
+
+                        <button onclick="rollDice()" class="w-full bg-gradient-to-r from-yellow-600 to-yellow-400 text-black py-5 rounded-2xl font-black text-2xl shadow-xl active:scale-95 transition-all">ATTACK!</button>
+
+                    </div>
+
+                </div>
+
+
+
+                <div id="party-list" class="space-y-2"></div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <div id="dm-edit-modal" class="hidden fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4">
+
+        <div class="glass-card p-6 w-full max-w-md border-2 border-yellow-500 shadow-2xl">
+
+            <h2 id="edit-p-name" class="text-2xl font-black text-yellow-500 mb-4 text-center uppercase">Character Management</h2>
+
+            <div id="edit-skill-list" class="mb-4 space-y-1 max-h-32 overflow-y-auto p-2 bg-black/40 rounded border border-gray-800"></div>
+
+            
+
+            <div class="grid grid-cols-2 gap-2 mb-6">
+
+                <button onclick="applyEffect('heal', 20)" class="bg-green-900 hover:bg-green-800 text-[10px] py-2 rounded font-black">HEAL 20</button>
+
+                <button onclick="applyEffect('dmg', 20)" class="bg-red-900 hover:bg-red-800 text-[10px] py-2 rounded font-black">DMG 20</button>
+
+                <button onclick="applyEffect('lucky', 10)" class="bg-yellow-600 text-black text-[10px] py-2 rounded font-black">GIVE LUCK</button>
+
+                <button onclick="applyEffect('reset', 0)" class="bg-gray-700 text-[10px] py-2 rounded font-black text-white">RESET STATUS</button>
+
+            </div>
+
+
+
+            <div class="border-t border-gray-800 pt-5 space-y-2">
+
+                <button onclick="deletePlayer()" class="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-black text-sm shadow-xl flex items-center justify-center gap-2">
+
+                    <span class="text-lg">☠</span> KICK & DELETE PLAYER
+
+                </button>
+
+                <button onclick="$('#dm-edit-modal').fadeOut()" class="w-full bg-white text-black py-2 rounded font-black text-xs">CLOSE</button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <script>
+
+        const firebaseConfig = { databaseURL: "https://dnd-in-the-hell-default-rtdb.asia-southeast1.firebasedatabase.app" };
+
+        firebase.initializeApp(firebaseConfig);
+
+        const db = firebase.database();
+
+
+
+        let currentRole = "", myId = "", selectedSkill = null, turnRolls = 0, editingPlayerId = "";
+
+        const prevHpMap = new Map(); // Store HP to track changes for flash effect
+
+
+
+        function checkDMAuth() { if (prompt("MASTER KEY:") === "0950378464") { currentRole = "DM"; initApp(); } }
+
+        function showLogin() { currentRole = "PLAYER"; $('#role-selection').fadeOut(300, () => { $('#main-ui, #auth-box').fadeIn(); }); }
+
+        
+
+        function handleAuth() {
+
+            const name = $('#p-name').val(); if(!name) return;
+
+            myId = "p_" + Date.now();
+
+            const race = $('#p-race').val();
+
+            const hp = (race === "Giant" ? 300 : 100);
+
+            db.ref('game/players/' + myId).set({
+
+                name, race, img: $('#p-img').val() || "https://img2.pic.in.th/pic/user-default.png",
+
+                hp: hp, maxHp: hp, x: 200, y: 1300, skills: [], status: { atkMod: 1, lucky: 0 }
+
+            });
+
+            $('#auth-box').hide(); $('#game-controls').show();
+
+            initApp();
+
+        }
+
+
+
+        function initApp() {
+
+            $('#role-selection').hide();
+
+            $('#main-ui').removeClass('hidden').show();
+
+            if (currentRole === 'DM') $('#dm-tools').show();
+
+            syncData(); syncVisuals(); syncBGM(); listenVictory();
+
+            setInterval(() => { turnRolls = 0; }, 8000);
+
+        }
+
+
+
+        // Logic for Damage Flash Effect
+
+        function checkDamageFlash(id, currentHp) {
+
+            const lastHp = prevHpMap.get(id);
+
+            if (lastHp !== undefined && currentHp < lastHp) {
+
+                const $target = $(`#${id}`);
+
+                $target.addClass('dmg-shake dmg-flash');
+
+                setTimeout(() => $target.removeClass('dmg-shake dmg-flash'), 500);
+
+            }
+
+            prevHpMap.set(id, currentHp);
+
+        }
+
+
+
+        function syncData() {
+
+            // Sync Bosses
+
+            db.ref('game/bosses').on('value', snap => {
+
+                const data = snap.val(); $('.boss-token').remove();
+
+                for(let id in data) {
+
+                    const b = data[id];
+
+                    checkDamageFlash(id, b.hp);
+
+                    const $t = $(`<div id="${id}" class="token boss-token" style="left:${b.x}px; top:${b.y}px;">
+
+                        <img src="${b.img}">
+
+                        <div class="hp-container">
+
+                            <div class="hp-bar-fill" style="width:${(b.hp/b.maxHp)*100}%"></div>
+
+                            <div class="hp-text-overlay">${b.hp}/${b.maxHp}</div>
+
+                        </div>
+
+                        <div class="token-name">${b.name}</div>
+
+                        ${currentRole === 'DM' ? `<button onclick="db.ref('game/bosses/${id}').remove()" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs font-bold shadow-lg">X</button>` : ''}
+
+                    </div>`).appendTo('#battle-map');
+
+                    $t.draggable({ stop: (e, ui) => db.ref(`game/bosses/${id}`).update({x: ui.position.left, y: ui.position.top}) });
+
+                }
+
+            });
+
+
+
+            // Sync Players
+
+            db.ref('game/players').on('value', snap => {
+
+                const players = snap.val(); if(!players) { $('.player-token').remove(); $('#party-list').empty(); return; }
+
+                $('.player-token').remove(); $('#party-list').empty();
+
+                if(currentRole === 'DM') $('#pending-skills').empty();
+
+
+
+                for(let id in players) {
+
+                    const p = players[id];
+
+                    checkDamageFlash(id, p.hp);
+
+                    const skillArr = p.skills || [];
+
+
+
+                    // Token on Map
+
+                    const $pt = $(`<div id="${id}" class="token player-token" style="left:${p.x}px; top:${p.y}px;">
+
+                        <img src="${p.img}" style="border-color:${id === myId ? '#3b82f6' : '#444'}">
+
+                        <div class="hp-container">
+
+                            <div class="hp-bar-fill" style="width:${(p.hp/p.maxHp)*100}%"></div>
+
+                            <div class="hp-text-overlay">${p.hp}/${p.maxHp}</div>
+
+                        </div>
+
+                        <div class="token-name">${p.name}</div>
+
+                    </div>`).appendTo('#battle-map');
+
+                    $pt.draggable({ stop: (e, ui) => db.ref(`game/players/${id}`).update({x: ui.position.left, y: ui.position.top}) });
+
+
+
+                    // Sidebar Card
+
+                    const luckyTag = p.status?.lucky > 0 ? `<span class="bg-yellow-600 px-1 rounded text-[8px] ml-1">LUCK+${p.status.lucky}</span>` : '';
+
+                    $(`<div class="glass-card p-2 flex items-center gap-2 border-l-4 ${id === myId ? 'border-blue-500 bg-blue-900/10' : 'border-gray-700'}">
+
+                        <img src="${p.img}" class="w-10 h-10 rounded-full border border-gray-600 object-cover">
+
+                        <div class="flex-1 overflow-hidden">
+
+                            <div class="text-[10px] font-black truncate text-white uppercase">${p.name} ${luckyTag}</div>
+
+                            <div class="text-[9px] text-red-500 font-black">HP: ${p.hp} / ${p.maxHp}</div>
+
+                        </div>
+
+                        ${currentRole === 'DM' ? `<button onclick="openEdit('${id}', '${p.name}')" class="bg-yellow-600 text-black px-2 py-1 rounded text-[10px] font-black">EDIT</button>` : ''}
+
+                    </div>`).appendTo('#party-list');
+
+
+
+                    // My Skills View
+
+                    if(id === myId) {
+
+                        $('#skill-count').text(`${skillArr.length}/3`);
+
+                        $('#btn-request-skill').prop('disabled', skillArr.length >= 3).css('opacity', skillArr.length >= 3 ? 0.5 : 1);
+
+                        $('#my-skills').empty();
+
+                        skillArr.forEach((s, i) => {
+
+                            $(`<button onclick="selectedSkill=${i}; syncData()" class="w-full p-2 rounded border-2 ${selectedSkill === i ? 'border-blue-500 bg-blue-900/20' : 'border-gray-800'} text-left text-xs mb-1">
+
+                                <div class="font-black flex justify-between"><span>${s.name}</span> <span class="${s.approved?'text-green-500':'text-gray-500'}">${s.approved?'READY':'PENDING'}</span></div>
+
+                            </button>`).appendTo('#my-skills');
+
+                        });
+
+                    }
+
+
+
+                    // DM Skill Queue
+
+                    if(currentRole === 'DM') {
+
+                        skillArr.forEach((s, i) => {
+
+                            if(!s.approved) {
+
+                                $(`<div class="bg-gray-800 p-2 rounded text-[10px] mb-1">
+
+                                    <div class="font-bold text-yellow-500">${p.name}: ${s.name}</div>
+
+                                    <div class="flex gap-1 mt-1">
+
+                                        <input type="number" id="dmg-${id}-${i}" placeholder="Dmg" class="w-1/2 h-6 text-[10px]">
+
+                                        <input type="number" id="req-${id}-${i}" placeholder="Req" class="w-1/2 h-6 text-[10px]">
+
+                                        <button onclick="approveSkill('${id}', ${i})" class="bg-green-600 px-2 rounded font-black text-white">OK</button>
+
+                                    </div>
+
+                                </div>`).appendTo('#pending-skills');
+
+                            }
+
+                        });
+
+                    }
+
+                }
+
+                if(editingPlayerId) renderEditSkills();
+
+            });
+
+        }
+
+
+
+        // DM Management Functions
+
+        function openEdit(id, name) { editingPlayerId = id; $('#edit-p-name').text(name); $('#dm-edit-modal').fadeIn(); }
+
+        
+
+        function deletePlayer() {
+
+            if(confirm("Kick this player permanently? This cannot be undone.")) {
+
+                db.ref(`game/players/${editingPlayerId}`).remove();
+
+                $('#dm-edit-modal').fadeOut();
+
+                editingPlayerId = "";
+
+                addLog("A player has been banished from the realm.", "text-red-600 font-bold");
+
+            }
+
+        }
+
+
+
+        function applyEffect(type, val) {
+
+            const ref = db.ref(`game/players/${editingPlayerId}`);
+
+            ref.once('value', snap => {
+
+                const p = snap.val(); if(!p) return;
+
+                if(type === 'heal') ref.update({ hp: Math.min(p.maxHp, p.hp + val) });
+
+                if(type === 'dmg') ref.update({ hp: Math.max(0, p.hp - val) });
+
+                if(type === 'lucky') ref.child('status').update({ lucky: Math.floor(Math.random() * 10) + 1 });
+
+                if(type === 'reset') ref.child('status').set({ atkMod: 1, lucky: 0 });
+
+            });
+
+        }
+
+
+
+        function renderEditSkills() {
+
+            db.ref(`game/players/${editingPlayerId}/skills`).once('value', snap => {
+
+                const skills = snap.val() || [];
+
+                $('#edit-skill-list').html('<p class="text-[9px] font-black text-gray-500 uppercase">Current Skills (Click to delete):</p>');
+
+                skills.forEach((s, i) => {
+
+                    $(`<button onclick="deleteSkill(${i})" class="w-full text-left bg-red-900/10 hover:bg-red-900/30 p-1 px-2 rounded text-[10px] border border-red-900/20 mb-1 flex justify-between group">
+
+                        <span>${s.name}</span> <span class="text-red-500 opacity-0 group-hover:opacity-100">DELETE</span>
+
+                    </button>`).appendTo('#edit-skill-list');
+
+                });
+
+            });
+
+        }
+
+
+
+        function deleteSkill(idx) {
+
+            db.ref(`game/players/${editingPlayerId}/skills`).once('value', snap => {
+
+                let s = snap.val(); s.splice(idx, 1);
+
+                db.ref(`game/players/${editingPlayerId}/skills`).set(s);
+
+            });
+
+        }
+
+
+
+        // Gameplay
+
+        function rollDice() {
+
+            if(selectedSkill === null) return alert("Select a skill!");
+
+            db.ref(`game/players/${myId}`).once('value', snap => {
+
+                const p = snap.val();
+
+                const skill = (p.skills || [])[selectedSkill];
+
+                if(!skill || !skill.approved) return alert("Skill not approved yet!");
+
+                if(turnRolls >= (p.race === "Drow" ? 3 : 2)) return alert("Out of moves!");
+
+
+
+                const r1 = Math.floor(Math.random() * 20) + 1;
+
+                const r2 = Math.floor(Math.random() * 20) + 1;
+
+                const bonus = (p.race === "Human" ? 2 : 0) + (p.status?.lucky || 0);
+
+                const total = r1 + r2 + bonus;
+
+
+
+                $('#d1').text(r1); $('#d2').text(r2); $('#total-score').text(total);
+
+                turnRolls++;
+
+
+
+                if(total >= skill.target) {
+
+                    let dmg = skill.dmg;
+
+                    if(p.race === "Elf") dmg = Math.floor(dmg * 1.5);
+
+                    if(p.race === "Dragon" && Math.random() < 0.5) dmg = 9999;
+
+                    
+
+                    db.ref('game/bosses').once('value', bSnap => {
+
+                        const bosses = bSnap.val();
+
+                        if(bosses) {
+
+                            const bId = Object.keys(bosses)[0];
+
+                            db.ref(`game/bosses/${bId}/hp`).transaction(hp => Math.max(0, hp - dmg));
+
+                            addLog(`${p.name} HIT: ${dmg} DMG!`, "text-green-400 font-bold");
+
+                        }
+
+                    });
+
+                } else { addLog(`${p.name} MISSED!`, "text-red-500"); }
+
+                if(p.status?.lucky > 0) db.ref(`game/players/${myId}/status/lucky`).set(0);
+
+            });
+
+        }
+
+
+
+        // DM Controls
+
+        function addMonster() {
+
+            const id = "b_" + Date.now();
+
+            const hp = parseInt($('#n-hp').val()) || 100;
+
+            db.ref('game/bosses/' + id).set({ name: $('#n-name').val() || "Boss", img: $('#n-img').val() || "https://img2.pic.in.th/pic/boss-default.png", hp: hp, maxHp: hp, x: 700, y: 200 });
+
+        }
+
+        function approveSkill(pid, idx) {
+
+            const d = parseInt($(`#dmg-${pid}-${idx}`).val()) || 10;
+
+            const r = parseInt($(`#req-${pid}-${idx}`).val()) || 10;
+
+            db.ref(`game/players/${pid}/skills/${idx}`).update({ dmg: d, target: r, approved: true });
+
+        }
+
+        function requestSkill() {
+
+            const name = $('#new-skill-name').val(); if(!name) return;
+
+            db.ref(`game/players/${myId}/skills`).once('value', snap => {
+
+                let s = snap.val() || []; if(s.length >= 3) return;
+
+                s.push({ name, dmg: 0, target: 0, approved: false });
+
+                db.ref(`game/players/${myId}/skills`).set(s);
+
+                $('#new-skill-name').val('');
+
+            });
+
+        }
+
+        function updateVisuals() { db.ref('game/settings/mapUrl').set($('#map-input').val()); }
+
+        function updateBGM() { db.ref('game/settings/bgmUrl').set($('#bgm-input').val()); }
+
+        
+
+        // Sync Visuals
+
+        db.ref('game/settings/mapUrl').on('value', snap => { $('#battle-map').css('background-image', `url('${snap.val() || "https://img2.pic.in.th/pic/image_cbe149.jpg"}')`); });
+
+        db.ref('game/settings/bgmUrl').on('value', snap => { if(snap.val()) { const p = document.getElementById('bgm-player'); p.src = snap.val(); p.play().catch(()=>{}); } });
+
+        
+
+        function triggerVictory() { db.ref('game/settings/victory').set(true); }
+
+        function closeVictory() { if(currentRole==='DM') db.ref('game/settings/victory').set(false); else $('#victory-overlay').fadeOut(); }
+
+        listenVictory = () => db.ref('game/settings/victory').on('value', snap => { if(snap.val()) { $('#victory-overlay').flex().fadeIn(); confetti(); } else { $('#victory-overlay').fadeOut(); } });
+
+        function addLog(msg, cls = "text-blue-300") { $('#game-log').prepend(`<div class="${cls}">> ${msg}</div>`); }
+
+    </script>
+
+</body>
+
+</html>
